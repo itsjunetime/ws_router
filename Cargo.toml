@@ -1,0 +1,18 @@
+[package]
+name = "warp_router"
+version = "0.1.0"
+authors = ["Ian Welker <ianwelker@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.5.0", features = ["full"] }
+warp = "0.3.1"
+uuid = { version = "0.8.2", features = ["v4"] }
+argonautica = "0.2.0"
+serde_derive = "1.0.125"
+serde = "1.0.125"
+futures-util = "0.3.14"
+futures = "0.3.1"
+futures-locks = "0.6"
