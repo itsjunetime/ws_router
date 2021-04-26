@@ -1,7 +1,6 @@
 #[derive(Debug)]
 pub enum Rejections {
 	MissingRegistrationType,
-	UnlockableHashMap,
 	UnhashableKey,
 }
 

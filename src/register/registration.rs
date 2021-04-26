@@ -18,6 +18,7 @@ use std::{
 	result::Result,
 	vec::Vec,
 	sync::Arc,
+	collections::hash_map::Entry
 };
 use uuid::Uuid;
 use futures_util::{
@@ -44,6 +45,8 @@ impl Registration {
 		unhashed_host_key: &str,
 		reg_type: RegistrationType
 	) -> Result<Registration, argonautica::Error> {
+		println!("\x1b[32;1m=>\x1b[0m Attempting to create new registration...");
+
 		let mut hasher = Hasher::default();
 
 		let key = hasher.with_password(unhashed_key)
@@ -57,6 +60,8 @@ impl Registration {
 		let mut buf = Uuid::encode_buffer();
 		let uuid = Uuid::new_v4().to_simple().encode_lower(&mut buf);
 
+		println!("\x1b[32;1m=>\x1b[0m Created new registration with uuid '{}'", uuid);
+
 		Ok(Registration {
 			uuid: uuid.to_owned(),
 			connections: Arc::new(RwLock::new(Vec::new())),
@@ -69,6 +74,7 @@ impl Registration {
 	pub async fn new_handler(
 		body: RegisterRequest, rgs: Registrations
 	) -> Result<impl Reply, Rejection> {
+		println!("\x1b[32;1m=>\x1b[0m Received request for new registration...");
 
 		let mut regs = rgs.write().await;
 
@@ -89,11 +95,16 @@ impl Registration {
 				Ok(new_reg) => {
 					let uuid = new_reg.uuid.to_owned();
 					regs.insert(uuid.to_owned(), new_reg);
+					println!("\x1b[32;1m=>\x1b[0m Saved new registration with key '{}'", uuid);
 					Ok(uuid)
 				},
-				Err(_) => Err(reject::custom(Rejections::UnhashableKey))
+				Err(_) => {
+					eprintln!("\x1b[31;1m✗\x1b[0m One or more of the keys in the registration request is unhashable");
+					Err(reject::custom(Rejections::UnhashableKey))
+				}
 			}
 		} else {
+			eprintln!("\x1b[31;1m✗\x1b[0m Registration type missing in registration request");
 			Err(reject::custom(Rejections::MissingRegistrationType))
 		}
 	}
@@ -117,21 +128,34 @@ impl Registration {
 		&mut self,
 		sender: SplitSink<WebSocket, Message>,
 		sock_type: SocketType,
-	) {
+	) -> String {
+		let mut buf = Uuid::encode_buffer();
+		let uuid = Uuid::new_v4().to_simple()
+			.encode_lower(&mut buf)
+			.to_owned();
+
+		let uuid_clone = uuid.to_owned();
+
 		let mut con = self.connections.write().await;
 
 		con.push(
 			Connection {
 				sender,
 				sock_type,
+				uuid
 			}
 		);
+
+		uuid_clone
 	}
 
 	pub fn spawn_sending(
 		&self,
 		receiver: SplitStream<WebSocket>,
-		sock_type: SocketType
+		sock_type: SocketType,
+		registrations: Registrations,
+		con_uuid: String,
+		reg_uuid: String
 	) {
 		let conn = self.connections.clone();
 
@@ -148,6 +172,8 @@ impl Registration {
 							SocketType::Client => SocketType::Host,
 							SocketType::Host => SocketType::Client
 						}
+						&&
+						c.uuid != con_uuid
 					) {
 
 					let new_msg = msg.clone();
@@ -157,11 +183,26 @@ impl Registration {
 					}
 				}
 			}
+
+			println!("\x1b[34;1m=>\x1b[0m Connection to websocket disconnected. Removing from connections...");
+
+			let mut conns = conn.write().await;
+			conns.retain(|c| c.uuid != con_uuid);
+
+			if conns.len() == 0 {
+				println!("\x1b[34;1m=>\x1b[0m No connections remaining. Removing registration...");
+
+				let mut regs = registrations.write().await;
+
+				if let Entry::Occupied(reg) = regs.entry(reg_uuid) {
+					reg.remove_entry();
+				}
+			}
 		});
 	}
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub enum RegistrationType {
 	HostClient,
 	Lobby
