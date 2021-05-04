@@ -7,7 +7,9 @@ use warp::{
 use crate::{
 	Registrations,
 	sockets::*,
-	register::RegistrationType
+	register::RegistrationType,
+	config::*,
+	CONFIG
 };
 use futures_util::StreamExt;
 
@@ -17,16 +19,21 @@ impl Socket {
 	pub async fn connect_handler(
 		ws: warp::ws::Ws, req: SocketRequest, registrations: Registrations
 	) -> Result<impl Reply, Rejection> {
+		let conf = CONFIG.read().await;
+		let out = !conf.quiet;
+		drop(conf);
+
+		Config::log(&format!("Websocket attempting to connect to registration with id '{}'", req.id), out, Color::Blue);
 
 		let regists = registrations.read().await;
 
 		let reg_type = if let Some(reg) = regists.get(&req.id) {
-			if !reg.verify_key(&req.key) {
-				eprintln!("\x1b[31;1m✗\x1b[0m Failed to verify key ({} against hash {})", req.key, reg.key);
+			if !reg.verify_key(&req.key).await {
+				Config::err(&format!("Failed to verify key ({} against hash {})", req.key, reg.key), out);
 				Err(reject::custom(Rejections::IncorrectKey))
 			} else {
 
-				println!("\x1b[34;1m=>\x1b[0m Key verified successfully");
+				Config::log("Key verified successfully", out, Color::Blue);
 
 				match reg.reg_type {
 					RegistrationType::HostClient => {
@@ -44,11 +51,11 @@ impl Socket {
 
 			}
 		} else {
-			eprintln!("\x1b[31;1m✗\x1b[0m Connection attemped to access registration with id {}, which does not exist.", req.id);
+			Config::err(&format!("Connection attempted to access registration with id {}, which does not exist.", req.id), out);
 			Err(reject::not_found())
 		}?;
 
-		println!("\x1b[34;1m=>\x1b[0m Got reg_type {:?}", reg_type);
+		Config::log(&format!("Got reg_type {:?}", reg_type), out, Color::Blue);
 
 		let sock_type = match reg_type {
 			RegistrationType::Lobby => Ok(SocketType::Socket),
@@ -61,7 +68,7 @@ impl Socket {
 			}
 		}?;
 
-		println!("\x1b[34;1m=>\x1b[0m Got sock_type {:?}, upgrading...", sock_type);
+		Config::log(&format!("Got sock_type {:?}, upgrading...", sock_type), out, Color::Blue);
 
 		Ok(ws.on_upgrade(move |socket|
 			Socket::spawn_forwarding(socket, req.id.to_owned(), registrations, sock_type)
