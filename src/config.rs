@@ -50,6 +50,8 @@ impl Config {
 				Config::err("Please enter both a key_file and a cert_file", !self.quiet);
 				return false;
 			}
+
+			self.secure = true;
 		}
 
 		true

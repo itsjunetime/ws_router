@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "1.5.0", features = ["full"] }
-warp = "0.3.1"
+warp = { version = "0.3.1", features = ["tls"] }
 uuid = { version = "0.8.2", features = ["v4"] }
 argonautica = "0.2.0"
 serde_derive = "1.0.125"

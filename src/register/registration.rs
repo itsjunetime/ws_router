@@ -252,7 +252,7 @@ impl Registration {
 			let out = !conf.quiet;
 			drop(conf);
 
-			Config::log("Successfully upgrading. Awaiting messages...", out, Color::Yellow);
+			Config::log("Successfully upgraded. Awaiting messages...", out, Color::Yellow);
 
 			while let Some(Ok(msg)) = mut_rec.next().await {
 				let should_destroy = dest.read().await;

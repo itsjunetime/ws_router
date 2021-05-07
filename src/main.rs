@@ -92,9 +92,34 @@ async fn main() {
 
 	let conf = CONFIG.read().await;
 	let port = conf.port;
-	drop(conf);
 
-	warp::serve(routes).run(([127, 0, 0, 1], port)).await;
+	if conf.secure {
+		Config::log("Running server with TLS...", !conf.quiet, config::Color::Blue);
+
+		let key_path = conf.key_file
+			.as_ref()
+			.expect("Please provide a key file")
+			.to_owned();
+
+		let cert_path = conf.cert_file
+			.as_ref()
+			.expect("Please provide a cert file")
+			.to_owned();
+
+		drop(conf);
+		warp::serve(routes)
+			.tls()
+			.cert_path(cert_path)
+			.key_path(key_path)
+			.run(([127, 0, 0, 1], port))
+			.await
+
+	} else {
+		Config::log("Running server...", !conf.quiet, config::Color::Blue);
+
+		drop(conf);
+		warp::serve(routes).run(([127, 0, 0, 1], port)).await;
+	}
 }
 
 fn with_registrations(rgs: Registrations) -> impl Filter<Extract = (Registrations,), Error = Infallible> + Clone {
