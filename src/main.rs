@@ -67,28 +67,36 @@ async fn main() {
 
 	let registrations: Registrations = Arc::new(RwLock::new(HashMap::new()));
 
+	let cors = warp::cors()
+		.allow_method(warp::hyper::Method::GET)
+		.allow_header(warp::hyper::header::CONTENT_TYPE)
+		.allow_any_origin()
+		.build();
+
 	let register_route = warp::path("register")
 		.and(warp::get())
 		.and(warp::query())
 		.and(with_registrations(registrations.clone()))
-		.and_then(Registration::new_handler);
+		.and_then(Registration::new_handler)
+		.with(&cors);
 
 	let connect_route = warp::path("connect")
 		.and(warp::ws())
 		.and(warp::query())
 		.and(with_registrations(registrations.clone()))
-		.and_then(Socket::connect_handler);
+		.and_then(Socket::connect_handler)
+		.with(&cors);
 
 	let remove_route = warp::path("remove")
 		.and(warp::get())
 		.and(warp::query())
 		.and(with_registrations(registrations.clone()))
-		.and_then(Registration::remove_handler);
+		.and_then(Registration::remove_handler)
+		.with(cors);
 
 	let routes = register_route
 		.or(connect_route)
-		.or(remove_route)
-		.with(warp::cors().allow_any_origin());
+		.or(remove_route);
 
 	let conf = CONFIG.read().await;
 	let port = conf.port;
@@ -118,7 +126,7 @@ async fn main() {
 		Config::log("Running server...", !conf.quiet, config::Color::Blue);
 
 		drop(conf);
-		warp::serve(routes).run(([127, 0, 0, 1], port)).await;
+		warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 	}
 }
 
