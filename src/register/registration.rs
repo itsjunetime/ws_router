@@ -48,7 +48,8 @@ impl Registration {
 	pub async fn new(
 		unhashed_key: &str,
 		unhashed_host_key: &str,
-		reg_type: RegistrationType
+		reg_type: RegistrationType,
+		registrations: Registrations
 	) -> Result<Registration, argonautica::Error> {
 		let conf = CONFIG.read().await;
 		let out = !conf.quiet;
@@ -67,15 +68,27 @@ impl Registration {
 
 		drop(conf);
 
-		let mut buf = Uuid::encode_buffer();
-		let uuid = Uuid::new_v4().to_simple().encode_lower(&mut buf);
+		let uuid = Uuid::new_v4().to_simple().to_string();
 
 		let destroy = Arc::new(RwLock::new(false));
 
-		Config::log(&format!("Created new registration with uuid '{}'", uuid), out, Color::Green);
+		let mut uuid_str = uuid[..8].to_owned();
+
+		let reg = registrations.read().await;
+
+		while reg.get(&uuid_str).is_some() {
+			let uuid = Uuid::new_v4().to_simple().to_string();
+			uuid_str = uuid[..8].to_owned();
+		}
+
+		Config::log(
+			&format!("Created new registration with uuid '{}'", uuid),
+			out,
+			Color::Green
+		);
 
 		Ok(Registration {
-			uuid: uuid.to_owned(),
+			uuid: uuid_str.to_owned(),
 			connections: Arc::new(RwLock::new(Vec::new())),
 			key,
 			host_key,
@@ -93,8 +106,6 @@ impl Registration {
 
 		Config::log("Received request for new registration...", out, Color::Green);
 
-		let mut regs = rgs.write().await;
-
 		let reg_type = match body.reg_type.as_str() {
 			"hostclient" => Some(RegistrationType::HostClient),
 			"lobby" => Some(RegistrationType::Lobby),
@@ -102,15 +113,20 @@ impl Registration {
 		};
 
 		if let Some(reg) = reg_type {
+			let reg_clone = rgs.clone();
 			let new_register = Registration::new(
 				&body.key,
 				&body.host_key,
-				reg
+				reg,
+				reg_clone
 			).await;
 
 			match new_register {
 				Ok(new_reg) => {
 					let uuid = new_reg.uuid.to_owned();
+
+					let mut regs = rgs.write().await;
+
 					regs.insert(uuid.to_owned(), new_reg);
 					Config::log(&format!("Saved new registration with key '{}'", uuid), out, Color::Green);
 					Ok(uuid)
