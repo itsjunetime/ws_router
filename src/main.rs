@@ -119,7 +119,7 @@ async fn main() {
 			.tls()
 			.cert_path(cert_path)
 			.key_path(key_path)
-			.run(([127, 0, 0, 1], port))
+			.run(([0, 0, 0, 0], port))
 			.await
 
 	} else {
