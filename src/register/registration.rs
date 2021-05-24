@@ -1,4 +1,3 @@
-use argonautica::{Hasher, Verifier};
 use crate::{
 	Registrations,
 	register::*,
@@ -50,21 +49,25 @@ impl Registration {
 		unhashed_host_key: &str,
 		reg_type: RegistrationType,
 		registrations: Registrations
-	) -> Result<Registration, argonautica::Error> {
+	) -> Result<Registration, argon2::Error> {
 		let conf = CONFIG.read().await;
 		let out = !conf.quiet;
 
 		Config::log("Attempting to create new registration..", out, Color::Green);
 
-		let mut hasher = Hasher::default();
+		let config = argon2::Config::default();
 
-		let key = hasher.with_password(unhashed_key)
-			.with_secret_key(conf.secret_key.as_str())
-			.hash()?;
+		let key = argon2::hash_encoded(
+			unhashed_key.as_bytes(),
+			conf.secret_key.as_bytes(),
+			&config
+		)?;
 
-		let host_key = hasher.with_password(unhashed_host_key)
-			.with_secret_key(conf.secret_key.as_str())
-			.hash()?;
+		let host_key = argon2::hash_encoded(
+			unhashed_host_key.as_bytes(),
+			conf.secret_key.as_bytes(),
+			&config
+		)?;
 
 		drop(conf);
 
@@ -188,35 +191,24 @@ impl Registration {
 	pub async fn verify_key(&self, key: &str) -> bool {
 		let conf = CONFIG.read().await;
 		let out = !conf.quiet;
-		let secret_key = conf.secret_key.to_owned();
 		drop(conf);
 
-		let mut verifier = Verifier::default();
-
-		match verifier.with_hash(self.key.as_str())
-			.with_password(key)
-			.with_secret_key(secret_key.as_str())
-			.verify() {
-				Err(_) => {
-					Config::err(&format!("Failed to verify key '{}' against hash '{}'", key, self.key), out);
-					false
-				},
-				Ok(val) => val
+		match argon2::verify_encoded(&self.key, key.as_bytes()) {
+			Err(_) => {
+				Config::err(&format!("Failed to verify key '{}' against hash '{}'", key, self.key), out);
+				false
+			},
+			Ok(val) => val
 		}
+
 	}
 
 	pub async fn verify_host_key(&self, key: &str) -> bool {
 		let conf = CONFIG.read().await;
 		let out = !conf.quiet;
-		let secret_key = conf.secret_key.to_owned();
 		drop(conf);
 
-		let mut verifier = Verifier::default();
-
-		match verifier.with_hash(self.host_key.as_str())
-			.with_password(key)
-			.with_secret_key(secret_key.as_str())
-			.verify() {
+		match argon2::verify_encoded(&self.host_key, key.as_bytes()) {
 				Err(_) => {
 					Config::err(&format!("Failed to verify host key '{}' against hash '{}'", key, self.host_key), out);
 					false

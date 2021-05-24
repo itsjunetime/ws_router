@@ -8,7 +8,7 @@ edition = "2018"
 tokio = { version = "1.5.0", features = ["full"] }
 warp = { version = "0.3.1", features = ["tls"] }
 uuid = { version = "0.8.2", features = ["v4"] }
-argonautica = "0.2.0"
+rust-argon2 = "0.8"
 serde_derive = "1.0.125"
 serde = "1.0.125"
 futures-util = "0.3.14"
