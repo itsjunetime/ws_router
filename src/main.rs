@@ -101,8 +101,24 @@ async fn main() {
 	let conf = CONFIG.read().await;
 	let port = conf.port;
 
+	let ip_addr = match std::net::UdpSocket::bind(format!("0.0.0.0:{}", port)) {
+		Ok(sock) => match sock.connect("8.8.8.8:80") {
+			Ok(_) => match sock.local_addr() {
+				Ok(addr) => Some(addr.ip().to_string()),
+				_ => None
+			},
+			_ => None
+		},
+		_ => None
+	};
+
+	let log_str = match ip_addr {
+		Some(ip) => format!(" at \x1b[1m{}:{}\x1b[0m", ip, port),
+		None => "".to_owned(),
+	};
+
 	if conf.secure {
-		Config::log("Running server with TLS...", !conf.quiet, config::Color::Blue);
+		Config::log(&format!("Running server{} with TLS...", log_str), !conf.quiet, config::Color::Blue);
 
 		let key_path = conf.key_file
 			.as_ref()
@@ -123,7 +139,7 @@ async fn main() {
 			.await
 
 	} else {
-		Config::log("Running server...", !conf.quiet, config::Color::Blue);
+		Config::log(&format!("Running server{}...", log_str), !conf.quiet, config::Color::Blue);
 
 		drop(conf);
 		warp::serve(routes).run(([0, 0, 0, 0], port)).await;
