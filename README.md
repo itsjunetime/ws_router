@@ -37,5 +37,12 @@ cargo build --release
 ```
 Your binary will be in target/release :)
 
+__To generate certificates__ to be used with this, run:
+```
+openssl genrsa -out key.rsa 3072
+openssl req -new -x509 -key key.rsa -out cert.pem -days 360
+```
+and fill out all the forms it asks you about. You can leave all of them blank besides the common name, which needs to have a value.
+
 ### Contributing
 If you have any questions or suggestions or features to add, feel free to file an issue or a PR!
