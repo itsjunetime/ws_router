@@ -262,30 +262,35 @@ impl Registration {
 
 			Config::log("Successfully upgraded. Awaiting messages...", out, Color::Yellow);
 
-			while let Some(Ok(msg)) = mut_rec.next().await {
-				let should_destroy = dest.read().await;
-				if *should_destroy {
-					break;
-				}
-
-				let mut conns = conn.write().await;
-
-				for con in conns.iter_mut()
-					.filter(|c|
-						c.sock_type == match sock_type {
-							SocketType::Socket => SocketType::Socket,
-							SocketType::Client => SocketType::Host,
-							SocketType::Host => SocketType::Client
+			while let Some(res) = mut_rec.next().await {
+				match res {
+					Ok(msg) => {
+						let should_destroy = dest.read().await;
+						if *should_destroy {
+							break;
 						}
-						&&
-						c.uuid != con_uuid
-					) {
 
-					let new_msg = msg.clone();
+						let mut conns = conn.write().await;
 
-					if let Err(err) = con.sender.send(new_msg).await {
-						Config::err(&format!("Failed to send message: {:?}", err), out);
-					}
+						for con in conns.iter_mut()
+							.filter(|c|
+								c.sock_type == match sock_type {
+									SocketType::Socket => SocketType::Socket,
+									SocketType::Client => SocketType::Host,
+									SocketType::Host => SocketType::Client
+								}
+								&&
+								c.uuid != con_uuid
+							) {
+
+							let new_msg = msg.clone();
+
+							if let Err(err) = con.sender.send(new_msg).await {
+								Config::err(&format!("Failed to send message: {:?}", err), out);
+							}
+						}
+					},
+					Err(err) => Config::err(&format!("Warp error: {}", err), out),
 				}
 			}
 
@@ -296,7 +301,7 @@ impl Registration {
 
 				if let Ok(ws) = mut_rec.reunite(sink.sender) {
 					match ws.close().await {
-						Err(_) => Config::err("Failed to close websocket nicely", out),
+						Err(err) => Config::err(&format!("Failed to close websocket nicely: {}", err), out),
 						Ok(_) => Config::log("Successfully closed websocket nicely", out, Color::Blue),
 					}
 				} else {
