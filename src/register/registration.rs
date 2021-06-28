@@ -3,6 +3,7 @@ use crate::{
 	register::*,
 	sockets::SocketType,
 	connections::Connection,
+	log_vbs, log, err
 };
 use warp::{
 	Reply,
@@ -51,9 +52,9 @@ impl Registration {
 		registrations: Registrations
 	) -> Result<Registration, argon2::Error> {
 		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
+		let (out, vbs) = (!conf.quiet, conf.verbose);
 
-		Config::log("Attempting to create new registration..", out, Color::Green);
+		log!(out, Color::Green, "Attempting to create new registration...");
 
 		let config = argon2::Config::default();
 
@@ -71,24 +72,26 @@ impl Registration {
 
 		drop(conf);
 
+		log_vbs!(vbs, out, "Verified keys...");
+
 		let uuid = Uuid::new_v4().to_simple().to_string();
 
 		let destroy = Arc::new(RwLock::new(false));
 
 		let mut uuid_str = uuid[..8].to_owned();
 
+		log_vbs!(vbs, out, "Created shortened uuid \x1b[1m{}\x1b[0m", uuid_str);
+
 		let reg = registrations.read().await;
 
 		while reg.get(&uuid_str).is_some() {
+			log_vbs!(vbs, out, "The uuid \x1b[1m{}\x1b[0m is already in use. Retrying...", uuid_str);
+
 			let uuid = Uuid::new_v4().to_simple().to_string();
 			uuid_str = uuid[..8].to_owned();
 		}
 
-		Config::log(
-			&format!("Created new registration with uuid '{}'", uuid),
-			out,
-			Color::Green
-		);
+		log!(out, Color::Green, "Created new registration with uuid \x1b[1m{}\x1b[0m", uuid_str);
 
 		Ok(Registration {
 			uuid: uuid_str.to_owned(),
@@ -103,17 +106,17 @@ impl Registration {
 	pub async fn new_handler(
 		body: RegisterRequest, rgs: Registrations
 	) -> Result<impl Reply, Rejection> {
-		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
-		drop(conf);
+		let (out, vbs) = Config::out_and_vbs().await;
 
-		Config::log("Received request for new registration...", out, Color::Green);
+		log!(out, Color::Green, "Received request for new registration...");
 
 		let reg_type = match body.reg_type.as_str() {
 			"hostclient" => Some(RegistrationType::HostClient),
 			"lobby" => Some(RegistrationType::Lobby),
 			_ => None
 		};
+
+		log_vbs!(vbs, out, "Registration has reg_type {:?}", reg_type);
 
 		if let Some(reg) = reg_type {
 			let reg_clone = rgs.clone();
@@ -124,6 +127,8 @@ impl Registration {
 				reg_clone
 			).await;
 
+			log_vbs!(vbs, out, "Successfully created new registration");
+
 			match new_register {
 				Ok(new_reg) => {
 					let uuid = new_reg.uuid.to_owned();
@@ -131,16 +136,16 @@ impl Registration {
 					let mut regs = rgs.write().await;
 
 					regs.insert(uuid.to_owned(), new_reg);
-					Config::log(&format!("Saved new registration with key '{}'", uuid), out, Color::Green);
+					log!(out, Color::Green, "Saved new registration with key \x1b[1m{}\x1b[0m", uuid);
 					Ok(uuid)
 				},
 				Err(_) => {
-					Config::err("One or more of the keys in the registration request is unhashable", out);
+					err!(out, "One or more of the keys in the registration request is/are unhashable");
 					Err(reject::custom(Rejections::UnhashableKey))
 				}
 			}
 		} else {
-			Config::err("Registration type missing in registration request", out);
+			err!(out, "Registration type missing in registration request");
 			Err(reject::custom(Rejections::MissingRegistrationType))
 		}
 	}
@@ -148,20 +153,20 @@ impl Registration {
 	pub async fn remove_handler(
 		body: RemoveRequest, rgs: Registrations
 	) -> Result<impl Reply, Rejection> {
-		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
-		drop(conf);
+		let (out, vbs) = Config::out_and_vbs().await;
 
-		Config::log(&format!("Received request to remove registration with uuid '{}'", body.id), out, Color::Yellow);
+		log!(out, Color::Yellow, "Received request to remove registration with id \x1b[1m{}\x1b[0m", body.id);
 
 		let mut regs = rgs.write().await;
 
 		let _ = if let Some(reg) = regs.get(&body.id) {
+			log_vbs!(vbs, out, "Verifying removal request keys...");
+
 			let key_ver = reg.verify_key(&body.key);
 			let host_ver = reg.verify_host_key(&body.host_key);
 
 			if key_ver.await && host_ver.await {
-				Config::log(&format!("Verified keys. Removing registration with key '{}'", body.id), out, Color::Yellow);
+				log!(out, Color::Yellow, "Verified keys; removing registration");
 
 				let mut destroy = reg.destroy.write().await;
 				*destroy = true;
@@ -169,11 +174,11 @@ impl Registration {
 
 				Ok(())
 			} else {
-				Config::err("Failed to verify keys. Not removing registration", out);
+				err!(out, "Failed to verify keys. Not removing registration");
 				Err(reject::custom(Rejections::InvalidKey))
 			}
 		} else {
-			Config::err("Registration not found.", out);
+			err!(out, "Registration not found");
 			Err(reject::not_found())
 		}?;
 
@@ -189,13 +194,13 @@ impl Registration {
 	}
 
 	pub async fn verify_key(&self, key: &str) -> bool {
-		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
-		drop(conf);
+		let (out, vbs) = Config::out_and_vbs().await;
+
+		log_vbs!(vbs, out, "Checking '{}' against '{}'", key, self.key);
 
 		match argon2::verify_encoded(&self.key, key.as_bytes()) {
 			Err(_) => {
-				Config::err(&format!("Failed to verify key '{}' against hash '{}'", key, self.key), out);
+				err!(out, "Failed to verify key '{}' against hash '{}'", key, self.key);
 				false
 			},
 			Ok(val) => val
@@ -204,13 +209,13 @@ impl Registration {
 	}
 
 	pub async fn verify_host_key(&self, key: &str) -> bool {
-		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
-		drop(conf);
+		let (out, vbs) = Config::out_and_vbs().await;
+
+		log_vbs!(vbs, out, "Checking '{}' against '{}", key, self.key);
 
 		match argon2::verify_encoded(&self.host_key, key.as_bytes()) {
 				Err(_) => {
-					Config::err(&format!("Failed to verify host key '{}' against hash '{}'", key, self.host_key), out);
+					err!(out, "Failed to verify host key '{}' against hash '{}'", key, self.host_key);
 					false
 				},
 				Ok(val) => val
@@ -222,12 +227,18 @@ impl Registration {
 		sender: SplitSink<WebSocket, Message>,
 		sock_type: SocketType,
 	) -> String {
+		let (out, vbs) = Config::out_and_vbs().await;
+
+		log_vbs!(vbs, out, "Received request to add connection");
+
 		let mut buf = Uuid::encode_buffer();
 		let uuid = Uuid::new_v4().to_simple()
 			.encode_lower(&mut buf)
 			.to_owned();
 
 		let uuid_clone = uuid.to_owned();
+
+		log_vbs!(vbs, out, "Generated UUID of \x1b[1m{}\x1b[0m", uuid);
 
 		let mut con = self.connections.write().await;
 
@@ -238,6 +249,8 @@ impl Registration {
 				uuid
 			}
 		);
+
+		log_vbs!(vbs, out, "Inserted new connection");
 
 		uuid_clone
 	}
@@ -256,17 +269,19 @@ impl Registration {
 		tokio::spawn(async move {
 			let mut mut_rec = receiver;
 
-			let conf = CONFIG.read().await;
-			let out = !conf.quiet;
-			drop(conf);
+			let (out, vbs) = Config::out_and_vbs().await;
 
-			Config::log("Successfully upgraded. Awaiting messages...", out, Color::Yellow);
+			log!(out, Color::Yellow, "Successfully upgraded. Awaiting messages...");
 
 			while let Some(res) = mut_rec.next().await {
+				log_vbs!(vbs, out,
+					"Awaiting next message for connection {} in registration {}", con_uuid, reg_uuid);
+
 				match res {
 					Ok(msg) => {
 						let should_destroy = dest.read().await;
 						if *should_destroy {
+							log_vbs!(vbs, out, "Should destroy connection {}, breaking...", con_uuid);
 							break;
 						}
 
@@ -283,14 +298,16 @@ impl Registration {
 								c.uuid != con_uuid
 							) {
 
-							let new_msg = msg.clone();
+							let msg_clone = msg.clone();
 
-							if let Err(err) = con.sender.send(new_msg).await {
-								Config::err(&format!("Failed to send message: {:?}", err), out);
+							log_vbs!(vbs, out, "Attempting to send message to conn id {}", con.uuid);
+
+							if let Err(err) = con.sender.send(msg_clone).await {
+								err!(out, "Failed to send message: {:?}", err);
 							}
 						}
 					},
-					Err(err) => Config::err(&format!("Warp error: {}", err), out),
+					Err(err) => err!(out, "Warp error: {}", err),
 				}
 			}
 
@@ -301,24 +318,26 @@ impl Registration {
 
 				if let Ok(ws) = mut_rec.reunite(sink.sender) {
 					match ws.close().await {
-						Err(err) => Config::err(&format!("Failed to close websocket nicely: {}", err), out),
-						Ok(_) => Config::log("Successfully closed websocket nicely", out, Color::Blue),
+						Err(err) => err!(out, "Failed to close websocket nicely: {}", err),
+						Ok(_) => log!(out, Color::Blue, "Successfully closed websocket nicely"),
 					}
 				} else {
-					Config::err("Found matching sender but failed to reunite sender and receiver", out);
+					err!(out, "Found matching sender but failed to reunite sender and receiver");
 				}
 			} else {
-				Config::err("Failed to find matching connection to remove", out);
+				err!(out, "Failed to find matching connection to remove");
 			}
 
-			if conns.len() == 0 {
-				Config::log("No connections remaining. Removing registration...", out, Color::Blue);
+			if conns.is_empty() {
+				log!(out, Color::Blue, "No connections remaining. Removing registration...");
 
 				let mut regs = registrations.write().await;
 
 				if let Entry::Occupied(reg) = regs.entry(reg_uuid) {
 					reg.remove_entry();
 				}
+			} else {
+				log_vbs!(vbs, out, "Not removing registration. Remaining connections: {}", conns.len());
 			}
 		});
 	}

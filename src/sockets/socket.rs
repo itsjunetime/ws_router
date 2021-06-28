@@ -9,7 +9,7 @@ use crate::{
 	sockets::*,
 	register::RegistrationType,
 	config::*,
-	CONFIG
+	err, log, log_vbs
 };
 use futures_util::StreamExt;
 
@@ -19,21 +19,18 @@ impl Socket {
 	pub async fn connect_handler(
 		ws: warp::ws::Ws, req: SocketRequest, registrations: Registrations
 	) -> Result<impl Reply, Rejection> {
-		let conf = CONFIG.read().await;
-		let out = !conf.quiet;
-		drop(conf);
+		let (out, _) = Config::out_and_vbs().await;
 
-		Config::log(&format!("Websocket attempting to connect to registration with id '{}'", req.id), out, Color::Blue);
+		log!(out, Color::Blue, "Websocket attempting to connect to registration with id \x1b[1m{}\x1b[0m", req.id);
 
 		let regists = registrations.read().await;
 
 		let reg_type = if let Some(reg) = regists.get(&req.id) {
 			if !reg.verify_key(&req.key).await {
-				Config::err(&format!("Failed to verify key ({} against hash {})", req.key, reg.key), out);
+				err!(out, "Failed to verify key ('{}' against hash '{}')", req.key, reg.key);
 				Err(reject::custom(Rejections::IncorrectKey))
 			} else {
-
-				Config::log("Key verified successfully", out, Color::Blue);
+				log!(out, Color::Blue, "Key verified successfully");
 
 				match reg.reg_type {
 					RegistrationType::HostClient => {
@@ -51,11 +48,11 @@ impl Socket {
 
 			}
 		} else {
-			Config::err(&format!("Connection attempted to access registration with id {}, which does not exist.", req.id), out);
+			err!(out, "Request attempted to access registration with id {}, which does not exist", req.id);
 			Err(reject::not_found())
 		}?;
 
-		Config::log(&format!("Got reg_type {:?}", reg_type), out, Color::Blue);
+		log!(out, Color::Blue, "Got reg_type {:?}", reg_type);
 
 		let sock_type = match reg_type {
 			RegistrationType::Lobby => Ok(SocketType::Socket),
@@ -68,7 +65,7 @@ impl Socket {
 			}
 		}?;
 
-		Config::log(&format!("Got sock_type {:?}, upgrading...", sock_type), out, Color::Blue);
+		log!(out, Color::Blue, "Got sock_type {:?}, upgrading...", sock_type);
 
 		Ok(ws.on_upgrade(move |socket|
 			Socket::spawn_forwarding(socket, req.id.to_owned(), registrations, sock_type)
@@ -81,6 +78,10 @@ impl Socket {
 		registrations: Registrations,
 		sock_type: SocketType
 	) {
+		let (out, vbs) = Config::out_and_vbs().await;
+
+		log_vbs!(vbs, out, "Spawning forwarding for socket with id {} and sock_type {:?}", id, sock_type);
+
 		let (ws_sender, ws_receiver) = ws.split();
 
 		let reg_clone = registrations.clone();
@@ -90,6 +91,8 @@ impl Socket {
 			let uuid = reg.add_connection(ws_sender, sock_type).await;
 			reg.spawn_sending(ws_receiver, sock_type, reg_clone, uuid, id);
 		}
+
+		log_vbs!(vbs, out, "Successfully added connection and spawned forwarding");
 	}
 }
 

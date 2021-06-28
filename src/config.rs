@@ -1,8 +1,36 @@
 use uuid::Uuid;
 
+#[macro_export]
+macro_rules! log_vbs{
+	($vbs:expr, $out:expr, $msg:expr$(, $args:expr)*) => {
+		if $vbs {
+			crate::log!($out, Color::Purple, $msg$(, $args)*)
+		}
+	}
+}
+
+#[macro_export]
+macro_rules! log{
+	($out:expr, $col:expr, $msg:expr$(, $args:expr)*) => {
+		if $out {
+			Config::log(format!($msg$(, $args)*), $col);
+		}
+	}
+}
+
+#[macro_export]
+macro_rules! err{
+	($out:expr, $msg:expr$(, $args:expr)*) => {
+		if $out {
+			Config::err(format!($msg$(, $args)*))
+		}
+	}
+}
+
 pub struct Config {
 	pub port: u16,
 	pub quiet: bool,
+	pub verbose: bool,
 	pub secret_key: String,
 	pub secure: bool,
 	pub key_file: Option<String>,
@@ -14,6 +42,7 @@ impl Config {
 		Config {
 			port: 8741,
 			quiet: false,
+			verbose: false,
 			secret_key: Uuid::new_v4().to_string(),
 			secure: false,
 			key_file: None,
@@ -30,7 +59,7 @@ impl Config {
 			if let Ok(port_int) = port.parse() {
 				self.port = port_int;
 			} else {
-				Config::err(&format!("Please only use values from 0 - 2^16 for the post (you input '{}')", port), !self.quiet);
+				err!(!self.quiet, "Please only use values from 0 = 2^16 for the port (you input '{}')", port);
 				return false;
 			}
 		}
@@ -47,32 +76,38 @@ impl Config {
 				.map(|c| c.to_owned());
 
 			if self.cert_file.is_none() || self.key_file.is_none() {
-				Config::err("Please enter both a key_file and a cert_file", !self.quiet);
+				err!(!self.quiet, "Please enter both a key_file and a cert_file");
 				return false;
 			}
 
 			self.secure = true;
 		}
 
+		if matches.occurrences_of("verbose") > 0 {
+			self.verbose = true;
+		}
+
 		true
 	}
 
-	pub fn err(err: &str, print: bool) {
-		if print {
-			eprintln!("\x1b[31;1m✗\x1b[0m {}", err);
-		}
+	pub fn err(err: String) {
+		eprintln!("\x1b[1m{} \x1b[31m✗\x1b[0m  {}", chrono::Local::now().format("[%H:%M:%S]"), err);
 	}
 
-	pub fn log(log: &str, print: bool, color: Color) {
-		if print {
-			let col_str = match color {
-				Color::Green => "32",
-				Color::Yellow => "33",
-				Color::Blue => "34",
-			};
+	pub fn log(log: String, color: Color) {
+		let col_str = match color {
+			Color::Green => "32",
+			Color::Yellow => "33",
+			Color::Blue => "34",
+			Color::Purple => "35",
+		};
 
-			println!("\x1b[{};1m=>\x1b[0m {}", col_str, log);
-		}
+		println!("\x1b[1m{} \x1b[{}m=>\x1b[0m {}", chrono::Local::now().format("[%H:%M:%S]"), col_str, log);
+	}
+
+	pub async fn out_and_vbs() -> (bool, bool) {
+		let conf = crate::CONFIG.read().await;
+		(!conf.quiet, conf.verbose)
 	}
 }
 
@@ -80,4 +115,5 @@ pub enum Color {
 	Green,
 	Yellow,
 	Blue,
+	Purple,
 }

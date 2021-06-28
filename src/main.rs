@@ -10,7 +10,10 @@ use sockets::*;
 use futures_locks::RwLock;
 use clap::{Arg, App};
 use lazy_static::lazy_static;
-use config::Config;
+use config::{
+	Config,
+	Color
+};
 
 mod register;
 mod sockets;
@@ -47,6 +50,11 @@ async fn main() {
 			.long("secure")
 			.help("Enables TLS on the server")
 			.requires_all(&["key_file", "cert_file"]))
+		.arg(Arg::with_name("verbose")
+			.short("v")
+			.long("verbose")
+			.help("Enables verbose logging")
+			.conflicts_with("quiet"))
 		.arg(Arg::with_name("key_file")
 			.long("key_file")
 			.help("The key file, if you are running the server with TLS")
@@ -118,7 +126,7 @@ async fn main() {
 	};
 
 	if conf.secure {
-		Config::log(&format!("Running server{} with TLS...", log_str), !conf.quiet, config::Color::Blue);
+		log!(!conf.quiet, Color::Blue, "Running server{} with TLS", log_str);
 
 		let key_path = conf.key_file
 			.as_ref()
@@ -139,13 +147,15 @@ async fn main() {
 			.await
 
 	} else {
-		Config::log(&format!("Running server{}...", log_str), !conf.quiet, config::Color::Blue);
+		log!(!conf.quiet, Color::Blue, "Running server{}...", log_str);
 
 		drop(conf);
 		warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 	}
 }
 
-fn with_registrations(rgs: Registrations) -> impl Filter<Extract = (Registrations,), Error = Infallible> + Clone {
+fn with_registrations(
+	rgs: Registrations
+) -> impl Filter<Extract = (Registrations,), Error = Infallible> + Clone {
 	warp::any().map(move || rgs.clone())
 }
