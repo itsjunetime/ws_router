@@ -33,6 +33,7 @@ pub struct Config {
 	pub verbose: bool,
 	pub secret_key: String,
 	pub secure: bool,
+	pub auto_remove: bool,
 	pub key_file: Option<String>,
 	pub cert_file: Option<String>
 }
@@ -45,6 +46,7 @@ impl Config {
 			verbose: false,
 			secret_key: Uuid::new_v4().to_string(),
 			secure: false,
+			auto_remove: false,
 			key_file: None,
 			cert_file: None
 		}
@@ -85,6 +87,10 @@ impl Config {
 
 		if matches.occurrences_of("verbose") > 0 {
 			self.verbose = true;
+		}
+
+		if matches.occurrences_of("remove") > 0 {
+			self.auto_remove = true;
 		}
 
 		true

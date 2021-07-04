@@ -269,6 +269,10 @@ impl Registration {
 		tokio::spawn(async move {
 			let mut mut_rec = receiver;
 
+			let conf = CONFIG.read().await;
+			let auto_remove = conf.auto_remove;
+			drop(conf);
+
 			let (out, vbs) = Config::out_and_vbs().await;
 
 			log!(out, Color::Yellow, "Successfully upgraded. Awaiting messages...");
@@ -328,7 +332,10 @@ impl Registration {
 				err!(out, "Failed to find matching connection to remove");
 			}
 
-			if conns.is_empty() {
+			let conns_len = conns.len();
+			drop(conns);
+
+			if conns_len == 0 && auto_remove {
 				log!(out, Color::Blue, "No connections remaining. Removing registration...");
 
 				let mut regs = registrations.write().await;
@@ -336,8 +343,8 @@ impl Registration {
 				if let Entry::Occupied(reg) = regs.entry(reg_uuid) {
 					reg.remove_entry();
 				}
-			} else {
-				log_vbs!(vbs, out, "Not removing registration. Remaining connections: {}", conns.len());
+			} else if auto_remove {
+				log_vbs!(vbs, out, "Not removing registration. Remaining connections: {}", conns_len);
 			}
 		});
 	}

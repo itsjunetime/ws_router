@@ -63,6 +63,11 @@ async fn main() {
 			.long("cert_file")
 			.help("The certificate, if you are running the server with TLS")
 			.takes_value(true))
+		.arg(Arg::with_name("remove")
+			.short("r")
+			.long("auto_remove")
+			.help("Automatically remove registrations when they have no devices connected to them anymore")
+			.takes_value(false))
 		.get_matches();
 
 	let mut conf = CONFIG.write().await;
