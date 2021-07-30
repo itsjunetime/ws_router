@@ -68,6 +68,11 @@ async fn main() {
 			.long("auto_remove")
 			.help("Automatically remove registrations when they have no devices connected to them anymore")
 			.takes_value(false))
+		.arg(Arg::with_name("reject")
+			.short("j")
+			.long("reject")
+			.help("Automatically reject registrations when the requested ID is already in use or invalid")
+			.takes_value(false))
 		.get_matches();
 
 	let mut conf = CONFIG.write().await;

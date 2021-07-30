@@ -31,11 +31,12 @@ pub struct Config {
 	pub port: u16,
 	pub quiet: bool,
 	pub verbose: bool,
+	pub reject_no_id: bool,
 	pub secret_key: String,
 	pub secure: bool,
 	pub auto_remove: bool,
 	pub key_file: Option<String>,
-	pub cert_file: Option<String>
+	pub cert_file: Option<String>,
 }
 
 impl Config {
@@ -44,6 +45,7 @@ impl Config {
 			port: 8741,
 			quiet: false,
 			verbose: false,
+			reject_no_id: false,
 			secret_key: Uuid::new_v4().to_string(),
 			secure: false,
 			auto_remove: false,
@@ -53,8 +55,12 @@ impl Config {
 	}
 
 	pub fn parse_args(&mut self, matches: clap::ArgMatches) -> bool {
-		if matches.occurrences_of("quiet") > 0 {
+		if matches.is_present("quiet") {
 			self.quiet = true;
+		}
+
+		if matches.is_present("reject") {
+			self.reject_no_id = true;
 		}
 
 		if let Some(port) = matches.value_of("port") {
@@ -70,7 +76,7 @@ impl Config {
 			self.secret_key = key.to_owned();
 		}
 
-		if matches.occurrences_of("secure") > 0 {
+		if matches.is_present("secure") {
 			self.key_file = matches.value_of("key_file")
 				.map(|k| k.to_owned());
 
@@ -85,11 +91,11 @@ impl Config {
 			self.secure = true;
 		}
 
-		if matches.occurrences_of("verbose") > 0 {
+		if matches.is_present("verbose") {
 			self.verbose = true;
 		}
 
-		if matches.occurrences_of("remove") > 0 {
+		if matches.is_present("remove") {
 			self.auto_remove = true;
 		}
 

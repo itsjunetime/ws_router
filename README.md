@@ -9,6 +9,7 @@ First, you'll make an HTTP GET to `http(s)://server:port/register` with the foll
 | `key` | String | The key that websocket connections must use when trying to connect to this registration. |
 | `host_key` | String | The key that someone will need to use to remove this registration while users are still connected to it. |
 | `reg_type` | String | Must be either `hostclient` or `lobby`. If `hostclient`, all connections will need to either act as a host or a client, and each connection's messages will only be passed to connections of the other type. If `lobby`, all connections' messages will be sent to all other connections. |
+| `id_req` | String | A specific id to request with the server (e.g. if a device accidentally disconnects, it would want to reconnect with the same ID so as to not confuse the user). When running the server with the `--reject` flag, all IDs that are requested and 1. are already in use or 2. are not exactly 8 ascii digits long will be rejected. If this flag is not set and one of these two conditions is true, the server will simply generate a random ID anyways and return that instead of the requested one. |
 
 The response from this request will be a random string (a UUID), 32 digits long (the length of this string may change in later versions of ws_router). To connect to the registration that was just created with this most recent request, you'll connect via to a websocket via `ws(s)://server:port/connect` with the following URL Query parameters:
 

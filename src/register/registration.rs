@@ -49,32 +49,47 @@ impl Registration {
 		unhashed_key: &str,
 		unhashed_host_key: &str,
 		reg_type: RegistrationType,
-		registrations: Registrations
-	) -> Result<Registration, argon2::Error> {
+		id_req: Option<String>,
+		registrations: Registrations,
+	) -> Result<Registration, Rejections> {
 		let conf = CONFIG.read().await;
-		let (out, vbs) = (!conf.quiet, conf.verbose);
+		let (out, vbs, reject) = (!conf.quiet, conf.verbose, conf.reject_no_id);
 
 		log!(out, Color::Green, "Attempting to create new registration...");
 
 		let config = argon2::Config::default();
 
-		let key = argon2::hash_encoded(
+		let key = match argon2::hash_encoded(
 			unhashed_key.as_bytes(),
 			conf.secret_key.as_bytes(),
 			&config
-		)?;
+		) {
+			Ok(key) => key,
+			Err(_) => return Err(Rejections::UnhashableKey.into()),
+		};
 
-		let host_key = argon2::hash_encoded(
+		let host_key = match argon2::hash_encoded(
 			unhashed_host_key.as_bytes(),
 			conf.secret_key.as_bytes(),
 			&config
-		)?;
+		) {
+			Ok(key) => key,
+			Err(_) => return Err(Rejections::UnhashableKey.into()),
+		};
 
 		drop(conf);
 
 		log_vbs!(vbs, out, "Verified keys...");
 
-		let uuid = Uuid::new_v4().to_simple().to_string();
+		let has_id_req = id_req.is_some();
+
+		// we have to make sure that the id they entered is greater than 7 characters
+		// so that it doesn't cause a crash when uuid_str is truncated
+		let uuid = match id_req {
+			Some(id) if id.len() == 8 => id,
+			Some(_) if reject => return Err(Rejections::IncorrectLengthID.into()),
+			_ => Uuid::new_v4().to_simple().to_string(),
+		};
 
 		let destroy = Arc::new(RwLock::new(false));
 
@@ -85,6 +100,10 @@ impl Registration {
 		let reg = registrations.read().await;
 
 		while reg.get(&uuid_str).is_some() {
+			if has_id_req && reject {
+				return Err(Rejections::InUseID.into())
+			}
+
 			log_vbs!(vbs, out, "The uuid \x1b[1m{}\x1b[0m is already in use. Retrying...", uuid_str);
 
 			let uuid = Uuid::new_v4().to_simple().to_string();
@@ -124,13 +143,14 @@ impl Registration {
 				&body.key,
 				&body.host_key,
 				reg,
-				reg_clone
+				body.id_req,
+				reg_clone,
 			).await;
-
-			log_vbs!(vbs, out, "Successfully created new registration");
 
 			match new_register {
 				Ok(new_reg) => {
+					log_vbs!(vbs, out, "Successfully created new registration");
+
 					let uuid = new_reg.uuid.to_owned();
 
 					let mut regs = rgs.write().await;
@@ -139,9 +159,9 @@ impl Registration {
 					log!(out, Color::Green, "Saved new registration with key \x1b[1m{}\x1b[0m", uuid);
 					Ok(uuid)
 				},
-				Err(_) => {
-					err!(out, "One or more of the keys in the registration request is/are unhashable");
-					Err(reject::custom(Rejections::UnhashableKey))
+				Err(err) => {
+					err!(out, "Failed to make new registration: {}", err);
+					Err(reject::custom(err))
 				}
 			}
 		} else {
@@ -345,6 +365,8 @@ impl Registration {
 				}
 			} else if auto_remove {
 				log_vbs!(vbs, out, "Not removing registration. Remaining connections: {}", conns_len);
+			} else {
+				log!(out, Color::Blue, "Remaining connections in this registration: {}", conns_len);
 			}
 		});
 	}
