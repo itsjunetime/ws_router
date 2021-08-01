@@ -19,6 +19,7 @@ mod register;
 mod sockets;
 mod connections;
 mod config;
+mod stats;
 
 type Registrations = Arc<RwLock<HashMap<String, Registration>>>;
 
@@ -110,11 +111,18 @@ async fn main() {
 		.and(warp::query())
 		.and(with_registrations(registrations.clone()))
 		.and_then(Registration::remove_handler)
+		.with(&cors);
+
+	let stats_route = warp::path("stats")
+		.and(warp::get())
+		.and(with_registrations(registrations.clone()))
+		.and_then(stats::return_stats)
 		.with(cors);
 
 	let routes = register_route
 		.or(connect_route)
-		.or(remove_route);
+		.or(remove_route)
+		.or(stats_route);
 
 	let conf = CONFIG.read().await;
 	let port = conf.port;

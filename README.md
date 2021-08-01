@@ -29,6 +29,8 @@ A registration is automatically removed from the internal registration store as 
 
 Once a device has been connected to a certain registration, it can keep on communicating through that connection and the registration that it is connected to, as long as the registration has not been removed.
 
+Anyone may also query for information about the registrations and connections by sending a GET request to `/stats`.
+
 ### Building
 Just as with any rust program &mdash;
 ```sh
