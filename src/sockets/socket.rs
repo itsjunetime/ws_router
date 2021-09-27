@@ -35,12 +35,22 @@ impl Socket {
 				match reg.reg_type {
 					RegistrationType::HostClient => {
 						match req.sock_type {
-							Some(ref st) => if st.as_str() != "host" && st.as_str() != "client" {
-								Err(reject::custom(Rejections::InvalidSockType))
-							} else {
-								Ok(reg.reg_type)
+							Some(ref st) => {
+								// remove potential trailing slashes 'cause that's what the 
+								// rust URL crate adds
+								let st_rem = st.as_str().replace("/", "");
+
+								if st_rem != "host" && st_rem != "client" {
+									err!(out, "Rejecting because st is '{}', which is not allowed", st);
+									Err(reject::custom(Rejections::InvalidSockType))
+								} else {
+									Ok(reg.reg_type)
+								}
 							},
-							None => Err(reject::custom(Rejections::InvalidSockType)),
+							None => {
+								err!(out, "Rejecting because req.sock_type is none");
+								Err(reject::custom(Rejections::InvalidSockType))
+							}
 						}
 					},
 					_ => Ok(reg.reg_type)
