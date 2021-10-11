@@ -65,7 +65,7 @@ impl Registration {
 			&config
 		) {
 			Ok(key) => key,
-			Err(_) => return Err(Rejections::UnhashableKey.into()),
+			Err(_) => return Err(Rejections::UnhashableKey),
 		};
 
 		let host_key = match argon2::hash_encoded(
@@ -74,7 +74,7 @@ impl Registration {
 			&config
 		) {
 			Ok(key) => key,
-			Err(_) => return Err(Rejections::UnhashableKey.into()),
+			Err(_) => return Err(Rejections::UnhashableKey),
 		};
 
 		drop(conf);
@@ -87,7 +87,7 @@ impl Registration {
 		// so that it doesn't cause a crash when uuid_str is truncated
 		let uuid = match id_req {
 			Some(id) if id.len() == 8 => id,
-			Some(_) if reject => return Err(Rejections::IncorrectLengthID.into()),
+			Some(_) if reject => return Err(Rejections::IncorrectLengthID),
 			_ => Uuid::new_v4().to_simple().to_string(),
 		};
 
@@ -101,7 +101,7 @@ impl Registration {
 
 		while reg.get(&uuid_str).is_some() {
 			if has_id_req && reject {
-				return Err(Rejections::InUseID.into())
+				return Err(Rejections::InUseID)
 			}
 
 			log_vbs!(vbs, out, "The uuid \x1b[1m{}\x1b[0m is already in use. Retrying...", uuid_str);
