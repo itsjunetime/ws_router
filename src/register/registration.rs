@@ -297,41 +297,63 @@ impl Registration {
 
 			log!(out, Color::Yellow, "Successfully upgraded. Awaiting messages...");
 
-			while let Some(res) = mut_rec.next().await {
-				log_vbs!(vbs, out,
-					"Awaiting next message for connection {} in registration {}", con_uuid, reg_uuid);
-
-				match res {
-					Ok(msg) => {
-						let should_destroy = dest.read().await;
-						if *should_destroy {
-							log_vbs!(vbs, out, "Should destroy connection {}, breaking...", con_uuid);
-							break;
-						}
-
-						let mut conns = conn.write().await;
-
-						for con in conns.iter_mut()
-							.filter(|c|
-								c.sock_type == match sock_type {
-									SocketType::Socket => SocketType::Socket,
-									SocketType::Client => SocketType::Host,
-									SocketType::Host => SocketType::Client
-								}
-								&&
-								c.uuid != con_uuid
-							) {
-
-							let msg_clone = msg.clone();
-
-							log_vbs!(vbs, out, "Attempting to send message to conn id {}", con.uuid);
-
-							if let Err(err) = con.sender.send(msg_clone).await {
-								err!(out, "Failed to send message: {:?}", err);
+			loop {
+				// try to get the next message. If there is none in 30 seconds, just send a ping
+				// so that the connection is maintained
+				if let Ok(next) = tokio::time::timeout(std::time::Duration::from_secs(30), mut_rec.next()).await {
+					let msg = match next {
+						Some(Ok(m)) => {
+							if m.is_pong() {
+								continue;
 							}
+							m
+						},
+						Some(Err(err)) => {
+							err!(out, "Warp error when receiving next: {:?}", err);
+							continue;
+						},
+						_ => break,
+					};
+
+					// check if this connection should be destroyed, break if so
+					let should_destroy = dest.read().await;
+					if *should_destroy {
+						log_vbs!(vbs, out, "Should destroy connection {}, breaking...", con_uuid);
+						break;
+					}
+
+					let mut conns = conn.write().await;
+
+					// find all the other connections that we should send this message to
+					for con in conns.iter_mut()
+						.filter(|c|
+							c.sock_type == match sock_type {
+								SocketType::Socket => SocketType::Socket,
+								SocketType::Client => SocketType::Host,
+								SocketType::Host => SocketType::Client
+							}
+							&&
+							c.uuid != con_uuid
+						) {
+
+						// we have to clone it since we're sending it to multiple connections
+						let msg_clone = msg.clone();
+
+						log_vbs!(vbs, out, "Attempting to send message to conn id {}", con.uuid);
+
+						if let Err(err) = con.sender.send(msg_clone).await {
+							err!(out, "Failed to send message: {:?}", err);
 						}
-					},
-					Err(err) => err!(out, "Warp error: {}", err),
+					}					
+				} else {
+					// if the timeout doesn't return, just send a ping then poll again
+					let mut conns = conn.write().await;
+
+					if let Some(con) = conns.iter_mut().find(|c| c.uuid == con_uuid) {
+						if let Err(err) = con.sender.send(Message::ping(vec![])).await {
+							err!(out, "Failed to send ping: {:?}", err);
+						}
+					}
 				}
 			}
 
