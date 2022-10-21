@@ -4,5 +4,5 @@ use serde::Deserialize;
 pub struct SocketRequest {
 	pub key: String,
 	pub id: String,
-	pub sock_type: Option<String>
+	pub sock_type: Option<String>,
 }

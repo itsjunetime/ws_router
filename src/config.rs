@@ -50,7 +50,7 @@ impl Config {
 			secure: false,
 			auto_remove: false,
 			key_file: None,
-			cert_file: None
+			cert_file: None,
 		}
 	}
 
@@ -67,7 +67,11 @@ impl Config {
 			if let Ok(port_int) = port.parse() {
 				self.port = port_int;
 			} else {
-				err!(!self.quiet, "Please only use values from 0 = 2^16 for the port (you input '{}')", port);
+				err!(
+					!self.quiet,
+					"Please only use values from 0 = 2^16 for the port (you input '{}')",
+					port
+				);
 				return false;
 			}
 		}
@@ -77,11 +81,9 @@ impl Config {
 		}
 
 		if matches.is_present("secure") {
-			self.key_file = matches.value_of("key_file")
-				.map(|k| k.to_owned());
+			self.key_file = matches.value_of("key_file").map(|k| k.to_owned());
 
-			self.cert_file = matches.value_of("cert_file")
-				.map(|c| c.to_owned());
+			self.cert_file = matches.value_of("cert_file").map(|c| c.to_owned());
 
 			if self.cert_file.is_none() || self.key_file.is_none() {
 				err!(!self.quiet, "Please enter both a key_file and a cert_file");
@@ -103,7 +105,11 @@ impl Config {
 	}
 
 	pub fn err(err: String) {
-		eprintln!("\x1b[1m{} \x1b[31m✗\x1b[0m  {}", chrono::Local::now().format("[%H:%M:%S]"), err);
+		eprintln!(
+			"\x1b[1m{} \x1b[31m✗\x1b[0m  {}",
+			chrono::Local::now().format("[%H:%M:%S]"),
+			err
+		);
 	}
 
 	pub fn log(log: String, color: Color) {
@@ -114,7 +120,12 @@ impl Config {
 			Color::Purple => "35",
 		};
 
-		println!("\x1b[1m{} \x1b[{}m=>\x1b[0m {}", chrono::Local::now().format("[%H:%M:%S]"), col_str, log);
+		println!(
+			"\x1b[1m{} \x1b[{}m=>\x1b[0m {}",
+			chrono::Local::now().format("[%H:%M:%S]"),
+			col_str,
+			log
+		);
 	}
 
 	pub async fn out_and_vbs() -> (bool, bool) {

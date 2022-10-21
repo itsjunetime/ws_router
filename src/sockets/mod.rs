@@ -1,7 +1,7 @@
-pub use socket::*;
 pub use rejections::*;
+pub use socket::*;
 pub use socket_request::*;
 
-mod socket;
 mod rejections;
+mod socket;
 mod socket_request;

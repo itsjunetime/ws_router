@@ -1,29 +1,21 @@
-use std::{
-	sync::Arc,
-	collections::HashMap,
-	convert::Infallible,
-	process::exit,
-};
-use register::Registration;
-use warp::Filter;
-use sockets::*;
+use clap::{App, Arg};
+use config::{Color, Config};
 use futures_locks::RwLock;
-use clap::{Arg, App};
 use lazy_static::lazy_static;
-use config::{
-	Config,
-	Color
-};
+use register::Registration;
+use sockets::*;
+use std::{collections::HashMap, convert::Infallible, process::exit, sync::Arc};
+use warp::Filter;
 
+mod config;
+mod connections;
 mod register;
 mod sockets;
-mod connections;
-mod config;
 mod stats;
 
 type Registrations = Arc<RwLock<HashMap<String, Registration>>>;
 
-lazy_static!{
+lazy_static! {
 	static ref CONFIG: Arc<RwLock<Config>> = Arc::new(RwLock::new(Config::default()));
 }
 
@@ -72,12 +64,10 @@ async fn main() {
 		.get_matches();
 
 	let mut conf = CONFIG.write().await;
-	let parsed_correctly = conf.parse_args(matches);
-	drop(conf);
-
-	if !parsed_correctly {
+	if !conf.parse_args(matches) {
 		exit(1);
 	}
+	drop(conf);
 
 	let registrations: Registrations = Arc::new(RwLock::new(HashMap::new()));
 
@@ -122,31 +112,35 @@ async fn main() {
 	let conf = CONFIG.read().await;
 	let port = conf.port;
 
-	let ip_addr = match std::net::UdpSocket::bind(format!("0.0.0.0:{}", port)) {
-		Ok(sock) => match sock.connect("8.8.8.8:80") {
-			Ok(_) => match sock.local_addr() {
-				Ok(addr) => Some(addr.ip().to_string()),
-				_ => None
-			},
-			_ => None
-		},
-		_ => None
-	};
-
-	let log_str = match ip_addr {
-		Some(ip) => format!(" at \x1b[1m{}:{}\x1b[0m", ip, port),
-		None => "".to_owned(),
-	};
+	let log_str = std::net::UdpSocket::bind(format!("0.0.0.0:{}", port))
+		.ok()
+		.and_then(|sock|
+			sock.connect("8.8.8.8:80")
+				.ok()
+				.and_then(|_|
+					sock.local_addr()
+						.ok()
+						.map(|addr| format!(" at \x1b[1m{}:{}\x1b[0m", addr.ip(), port))
+				),
+		)
+		.unwrap_or_default();
 
 	if conf.secure {
-		log!(!conf.quiet, Color::Blue, "Running server{} with TLS", log_str);
+		log!(
+			!conf.quiet,
+			Color::Blue,
+			"Running server{} with TLS",
+			log_str
+		);
 
-		let key_path = conf.key_file
+		let key_path = conf
+			.key_file
 			.as_ref()
 			.expect("Please provide a key file")
 			.to_owned();
 
-		let cert_path = conf.cert_file
+		let cert_path = conf
+			.cert_file
 			.as_ref()
 			.expect("Please provide a cert file")
 			.to_owned();
@@ -158,7 +152,6 @@ async fn main() {
 			.key_path(key_path)
 			.run(([0, 0, 0, 0], port))
 			.await
-
 	} else {
 		log!(!conf.quiet, Color::Blue, "Running server{}...", log_str);
 
@@ -168,7 +161,7 @@ async fn main() {
 }
 
 fn with_registrations(
-	rgs: Registrations
+	rgs: Registrations,
 ) -> impl Filter<Extract = (Registrations,), Error = Infallible> + Clone {
 	warp::any().map(move || rgs.clone())
 }

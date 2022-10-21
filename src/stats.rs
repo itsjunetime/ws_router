@@ -1,11 +1,10 @@
 use crate::{
-	Registrations,
-	log,
-	config::{Config, Color}
+	config::{Color, Config},
+	log, Registrations,
 };
-use warp::{Reply, Rejection};
-use sysinfo::{SystemExt, ProcessExt};
 use std::convert::TryInto;
+use sysinfo::{ProcessExt, SystemExt};
+use warp::{Rejection, Reply};
 
 pub async fn return_stats(rgs: Registrations) -> Result<impl Reply, Rejection> {
 	log!(true, Color::Yellow, "Requesting stats on server...");
@@ -32,15 +31,16 @@ pub async fn return_stats(rgs: Registrations) -> Result<impl Reply, Rejection> {
 	let mut system = sysinfo::System::new_all();
 	system.refresh_memory();
 
-	let mut proc_usage = -1;
+	let proc_usage = std::process::id()
+		.try_into()
+		.ok()
+		.and_then(|pid| {
+			system.refresh_process(pid);
 
-	if let Ok(pid) = std::process::id().try_into() {
-		system.refresh_process(pid);
-
-		if let Some(proc) = system.process(pid) {
-			proc_usage = proc.memory() as i64;
-		}
-	}
+			system.process(pid)
+				.map(|proc| proc.memory() as i64)
+		})
+		.unwrap_or(-1);
 
 	let sys_info = serde_json::json!({
 		"total_mem": system.total_memory(),

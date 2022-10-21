@@ -11,7 +11,7 @@ pub enum Rejections {
 	#[error("ID is already in use and server is configured to reject requested IDs that are already in use")]
 	InUseID,
 	#[error("The ID must be exactly 8 characters long")]
-	IncorrectLengthID
+	IncorrectLengthID,
 }
 
-impl warp::reject::Reject for Rejections{}
+impl warp::reject::Reject for Rejections {}

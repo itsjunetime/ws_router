@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum Rejections {
 	IncorrectKey,
-	InvalidSockType
+	InvalidSockType,
 }
 
-impl warp::reject::Reject for Rejections{}
+impl warp::reject::Reject for Rejections {}
